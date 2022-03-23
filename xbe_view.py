@@ -80,6 +80,7 @@ class XbeView(BinaryView):
 
     def resolve_kernel_thunk_table(self):
         print("kernel thunk table:")
-        for sym, addr in self.xbe.kernel_thunk_table.items():
+        thunk_table = self.xbe.get_kernel_thunk_table()
+        for sym, addr in thunk_table.items():
            print("sym: %s addr: 0x%x" % (sym, addr))
            self.define_user_symbol(Symbol(SymbolType.ImportedDataSymbol, addr, sym))

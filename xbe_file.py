@@ -462,13 +462,21 @@ class XbeFile:
         self.entry = None
         self.kernel_thunk_addr = None
         self.decode_addrs() # see function implementation
-        self.get_kernel_thunk_table()
+
+    def resolve_virtaddr(self, addr):
+            if self.base_address <= addr and addr < (self.base_address + self.all_headers_size):
+                return addr - self.base_address
+
+            for section in self.sections:
+                if section.m_virtual_addr <= addr and addr < (section.m_virtual_addr + section.m_virtual_size):
+                    return (addr - section.m_virtual_addr) + section.m_raw_addr
 
     def get_data_range(self, start, end):
         if end is None:
             return self.data[start - self.base_address:]
         elif start is None:
             return self.data[:end - self.base_address]
+        
         return self.data[start - self.base_address:end - self.base_address]
 
     def decode_addrs(self):
@@ -504,17 +512,12 @@ class XbeFile:
         thunk_table = {}
         i = 0
 
-        # kernel thunk table appears to be at the start of .rdata
-        # due to walking it before mapping everything, we will just
-        # use the raw address of the .rdata section
-        # not sure if this workaround will bite us in the end...
-        addr = self.get_section_by_name(b'.rdata').m_raw_addr
-
+        raw_thunk_addr = self.resolve_virtaddr(self.kernel_thunk_addr)
         while (True):
-            thunk_data = u32(self.data[addr + i:addr  + i + 4])
+            thunk_data = u32(self.data[raw_thunk_addr+i:raw_thunk_addr+i+4])
             if thunk_data == 0: # end of thunk table
                 break
 
             thunk_table[XbeKernelThunkExport().resolve(thunk_data)] = self.kernel_thunk_addr + i
             i = i+4
-        self.kernel_thunk_table = thunk_table
+        return thunk_table
