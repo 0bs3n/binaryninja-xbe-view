@@ -1,5 +1,5 @@
-from binaryninja import Architecture, BinaryReader, BinaryView, BinaryWriter, Platform, Architecture, RelocationType
-from binaryninja.enums import SectionSemantics, SegmentFlag
+from binaryninja import Architecture, BinaryReader, BinaryView, BinaryWriter, Platform, Architecture, RelocationType, Symbol
+from binaryninja.enums import SectionSemantics, SegmentFlag, SymbolType
 from binaryninja import _binaryninjacore as core
 
 from .xbe_file import XbeFile
@@ -33,6 +33,8 @@ class XbeView(BinaryView):
         self.set_segments_sections()
         print(self.xbe.entry)
         self.add_entry_point(self.xbe.entry)
+        self.get_function_at(self.xbe.entry).name = "_start"
+        self.resolve_kernel_thunk_table()
         return True
 
     def perform_is_executable(self):
@@ -75,4 +77,9 @@ class XbeView(BinaryView):
                                   section.m_sizeof_raw,
                                   readable | writable | executable)
             self.add_auto_section(section.name, section.m_virtual_addr, section.m_virtual_size, semantics)
-        
+
+    def resolve_kernel_thunk_table(self):
+        print("kernel thunk table:")
+        for sym, addr in self.xbe.kernel_thunk_table.items():
+           print("sym: %s addr: 0x%x" % (sym, addr))
+           self.define_user_symbol(Symbol(SymbolType.ImportedDataSymbol, addr, sym))
