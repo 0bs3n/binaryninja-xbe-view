@@ -5,6 +5,9 @@ from binaryninja import _binaryninjacore as core
 from .xbe_file import XbeFile
 
 def get_cstr(buf):
+    """
+    Return a slice of the NULL terminated string at `buf`
+    """
     cursor = 0
     while buf[cursor] != 0:
         cursor += 1
@@ -79,6 +82,10 @@ class XbeView(BinaryView):
             self.add_auto_section(section.name, section.m_virtual_addr, section.m_virtual_size, semantics)
 
     def resolve_kernel_thunk_table(self):
+        """
+        obtain dictionary of kernel thunk table and define the symbols at their
+        respective addresses
+        """
         print("kernel thunk table:")
         thunk_table = self.xbe.get_kernel_thunk_table()
         for sym, addr in thunk_table.items():
