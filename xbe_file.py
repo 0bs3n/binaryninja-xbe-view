@@ -2,15 +2,26 @@ import struct
 import sys
 
 def get_cstr(buf):
+    """
+    Return a slice of the NULL terminated string at `buf`
+    """
     cursor = 0
     while buf[cursor] != 0:
         cursor += 1
     return buf[:cursor]
 
 def u32(b):
+    """
+    Unpack little endian 32bit value
+    """
     return struct.unpack("<I", b)[0]
 
 class XbeKernelThunkExport:
+    """
+    This is a class which will contain the XBE kernel exports table.
+    It provides a resolve() function which will aid in walking the 
+    thunk table and obtaining the symbol
+    """
     def __init__(self):
         # https://xboxdevwiki.net/Kernel#Kernel_exports
         self.thunk_exports = {
@@ -449,6 +460,8 @@ class XbeFile:
         self.xapi_libversion_addr = u32(data[0x16c:0x170])
         self.sections = []
 
+        # process all of the section headers and append them into the list 
+        # `sections`, containing defined structures and the resolved names
         SECTION_HEADER_SIZE = 0x38
         for i in range(0, self.num_sections * SECTION_HEADER_SIZE, SECTION_HEADER_SIZE):
             print("data start:", data[0:4])
@@ -462,16 +475,35 @@ class XbeFile:
         self.entry = None
         self.kernel_thunk_addr = None
         self.decode_addrs() # see function implementation
-        self.get_kernel_thunk_table()
+
+    def resolve_virtaddr(self, addr):
+        """
+        resolve a virtual address into the raw address in the image
+        """
+        if self.base_address <= addr and addr < (self.base_address + self.all_headers_size):
+            return addr - self.base_address
+
+        for section in self.sections:
+            if section.m_virtual_addr <= addr and addr < (section.m_virtual_addr + section.m_virtual_size):
+                return (addr - section.m_virtual_addr) + section.m_raw_addr
 
     def get_data_range(self, start, end):
+        """
+        obtain a slice of data between `start` and `end` adjusted by the 
+        `base_address`
+        """
         if end is None:
             return self.data[start - self.base_address:]
         elif start is None:
             return self.data[:end - self.base_address]
+        
         return self.data[start - self.base_address:end - self.base_address]
 
     def decode_addrs(self):
+        """
+        The entry point and kernel thunk address are both encoded with XOR keys
+        to decipher between debug and retail builds
+        """
         entry_debug_key = 0x94859D4B
         entry_retail_key = 0xA8FC57AB
 
@@ -490,6 +522,9 @@ class XbeFile:
             self.kernel_thunk_addr = self.cipher_kernel_image_thunk_addr ^ thunk_debug_key
 
     def get_section_by_name(self, section_name):
+        """
+        walk our list of sections and return the section named `section_name`
+        """
         for section in self.sections:
             cand_section_name = get_cstr(self.get_data_range(section.m_section_name_addr, end = None))
             print(cand_section_name)
@@ -500,21 +535,20 @@ class XbeFile:
         return None
 
     def get_kernel_thunk_table(self):
+        """
+        resolve the kernel thunk virtual address and resolve all symbols and
+        return a dictionary of each symbol name and their address
+        """
         print("thunk_addr: 0x%x" % self.kernel_thunk_addr)
         thunk_table = {}
         i = 0
 
-        # kernel thunk table appears to be at the start of .rdata
-        # due to walking it before mapping everything, we will just
-        # use the raw address of the .rdata section
-        # not sure if this workaround will bite us in the end...
-        addr = self.get_section_by_name(b'.rdata').m_raw_addr
-
+        raw_thunk_addr = self.resolve_virtaddr(self.kernel_thunk_addr)
         while (True):
-            thunk_data = u32(self.data[addr + i:addr  + i + 4])
+            thunk_data = u32(self.data[raw_thunk_addr+i:raw_thunk_addr+i+4])
             if thunk_data == 0: # end of thunk table
                 break
 
             thunk_table[XbeKernelThunkExport().resolve(thunk_data)] = self.kernel_thunk_addr + i
             i = i+4
-        self.kernel_thunk_table = thunk_table
+        return thunk_table
